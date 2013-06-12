@@ -8,46 +8,123 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
+#include <winsock2.h>
 #include <unistd.h>
 
 #define PORT 3550 /* El puerto que será abierto */
-#define BACKLOG 2 /* El número de conexiones permitidas */
+#define BACKLOG 5 /* El número de conexiones permitidas */
 
 void doprocessing (int sock)
 {
     int n;
     char buffer[256];
 
-    bzero(buffer,256);
+    memset(&(buffer), '0', 256);
+    int recvMsgSize;
 
-    n = read(sock,buffer,255);
-    if (n < 0)
+    /* Receive message from client */
+    if ((recvMsgSize = recv(sock, buffer, 256, 0)) < 0)
+        perror("ERROR reading to socket 1");
+		int i;
+
+
+    /* Send received string and receive again until end of transmission */
+    while (recvMsgSize > 0)      /* zero indicates end of transmission */
     {
-        perror("ERROR reading from socket");
-        exit(1);
+        buffer[recvMsgSize-1]='\0';
+
+        leerfile(buffer,sock);
+        memset(&(buffer),'0',256);
+        /* Echo message back to client */
+        if (send(sock, buffer, recvMsgSize, 0) != recvMsgSize)
+            perror("ERROR writing to socket 2");
+
+        /* See if there is more data to receive */
+        if ((recvMsgSize = recv(sock, buffer, 256, 0)) < 0)
+            perror("ERROR reading to socket 3");
     }
-    printf("Here is the message: %s\n",buffer);
-    n = write(sock,"I got your message",18);
-    if (n < 0)
-    {
-        perror("ERROR writing to socket");
-        exit(1);
-    }
+
+    closesocket(sock);    /* Close client socket */
 }
+
+BOOL initW32()
+{
+		WSADATA wsaData;
+		WORD version;
+		int error;
+
+		version = MAKEWORD( 2, 0 );
+
+		error = WSAStartup( version, &wsaData );
+
+		/* check for error */
+		if ( error != 0 )
+		{
+		    /* error occured */
+		    return FALSE;
+		}
+
+		/* check for correct version */
+		if ( LOBYTE( wsaData.wVersion ) != 2 ||
+		     HIBYTE( wsaData.wVersion ) != 0 )
+		{
+		    /* incorrect WinSock version */
+		    WSACleanup();
+		    return FALSE;
+		}
+}
+
+
+
+int leerfile(char* buffer,int sock)
+{
+
+   FILE * pFile;
+   char mystring [100];
+   boolean found=FALSE;
+   int a;
+
+
+   pFile = fopen ("rfc.txt" , "r");
+
+   if (pFile == NULL)
+        perror ("Error opening file");
+      else {
+
+             while (feof(pFile)==0)
+             {
+                fgets (mystring , sizeof(mystring) , pFile);
+
+                 if (strncmp(mystring+4,buffer,10)==0){
+                     puts (mystring);
+                     printf("%d\n",strlen(mystring));
+                    /* for (a=0;a<sizeof(mystring);a++)
+                     {
+                         if(mystring[a]=='\0')
+                         mystring[a]='\n';
+                     }*/
+                     send(sock,mystring,strlen(mystring),0);
+                     found=TRUE;
+                 }
+             }
+
+             if (found == FALSE)
+                send(sock,"No se encontro\n",15,0);
+        }
+    fclose (pFile);
+   return 0;
+}
+
+
+
 
 int main()
 {
 
-   int fd, fd2; /* los descriptores de archivos */
-
-   /* para la información de la dirección del servidor */
-   struct sockaddr_in server;
-
-   /* para la información de la dirección del cliente */
-   struct sockaddr_in client;
+	 initW32(); /* Necesaria para compilar en Windows */
+	 int fd, fd2; /* los descriptores de archivos */
+	 struct sockaddr_in server;   /* para la información de la dirección del servidor */
+	 struct sockaddr_in client;/* para la información de la dirección del cliente */
 
    unsigned int sin_size;
 
@@ -63,12 +140,13 @@ int main()
 
    server.sin_port = htons(PORT);
 
-   server.sin_addr.s_addr = INADDR_ANY;
-   /* INADDR_ANY coloca nuestra dirección IP automáticamente */
+   server.sin_addr.s_addr = INADDR_ANY;/* INADDR_ANY coloca nuestra dirección IP automáticamente */
+
 
    //bzero(&(server.sin_zero),8);
-   memset(&(server.sin_zero), '0', 8);
-   /* escribimos ceros en el reto de la estructura */
+
+   memset(&(server.sin_zero), '0', 8); /* escribimos ceros en el reto de la estructura */
+
 
 
    /* A continuación la llamada a bind() */
@@ -93,26 +171,12 @@ int main()
       printf("Se obtuvo una conexión desde %s\n", inet_ntoa(client.sin_addr) );
       /* que mostrará la IP del cliente */
 
-      send(fd2,"Bienvenido a mi servidor.\n",22,0);
+      //send(fd2,"Bienvenido a mi servidor Lain.\n",99,0);
+
       /* que enviará el mensaje de bienvenida al cliente */
 
-      /* Create child process */
-      pid = fork();
-      if (pid < 0) {
-          perror("ERROR on fork");
-           exit(-1);
-      }
-      if (pid == 0)
-      {
-          /* This is the client process */
-          close(fd);
-          doprocessing(fd2);
-          exit(0);
-      }
-      else
-      {
-          close(fd2);
-      }
+      doprocessing(fd2);
+
    } /* end while */
 }
 
